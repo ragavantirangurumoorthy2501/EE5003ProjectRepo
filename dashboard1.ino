@@ -2,6 +2,7 @@
 #include "lvgl.h"
 #include "Arduino_GigaDisplayTouch.h"
 
+// Initialize display and touch
 Arduino_H7_Video Display(800, 480, GigaDisplayShield);
 Arduino_GigaDisplayTouch TouchDetector;
 
@@ -15,14 +16,27 @@ lv_obj_t* adulterationIndicator;
 
 // Flow rate calculation variables
 #define FLOW_SENSOR_PIN D13               // GPIO pin connected to the sensor signal
-#define PULSES_PER_LITER 450             // Number of pulses per liter (adjust based on your sensor)
-volatile int pulseCount = 0;  // Variable to store pulse count
-float totalVolume_L = 0;     // Total volume in liters
+#define PULSES_PER_LITER 450              // Number of pulses per liter (adjust based on your sensor)
+volatile int pulseCount = 0;              // Variable to store pulse count
+float totalVolume_L = 0;                  // Total volume in liters
 
-unsigned long previousMillis = 0;  // Stores the last time the flow rate was updated
-const long interval = 1000;        // Interval at which to update (milliseconds)
+unsigned long previousMillis = 0;         // Stores the last time the flow rate was updated
+const long flowRateInterval = 1000;       // Interval at which to update (milliseconds)
+
+// pH sensor variables
+#define PH_SENSOR_PIN A2                  // Analog pin connected to the pH sensor
+#define NUM_SAMPLES 10                    // Number of samples for averaging
+#define PH_CALIBRATION_OFFSET -2.33       // Adjusted calibration offset for lemon juice
+#define PH_CALIBRATION_SLOPE 0.017        // Calibration slope (default is 3.5 for 5V, but adjusted here)
+
+unsigned long pHPreviousMillis = 0;       // Stores the last time the pH value was updated
+const long pHInterval = 1000;             // Interval at which to update pH value (milliseconds)
+int pHReadings[NUM_SAMPLES];              // Array to store pH sensor readings
+int readingIndex = 0;                     // Index for pHReadings array
+float filteredpHValue = 7.00;             // Filtered pH value
 
 void setup() {
+  // Initialize display and touch detector
   Display.begin();
   TouchDetector.begin();
 
@@ -30,20 +44,25 @@ void setup() {
   pinMode(FLOW_SENSOR_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), countPulses, RISING); // Attach interrupt for pulse counting
 
+  // Initialize pH readings array
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    pHReadings[i] = 0;
+  }
+
   // Display & Grid Setup
   lv_obj_t* screen = lv_scr_act();
-  
+
   // Create a container with grid 2x2
   static lv_coord_t col_dsc[] = {370, 370, LV_GRID_TEMPLATE_LAST};
   static lv_coord_t row_dsc[] = {215, 215, LV_GRID_TEMPLATE_LAST};
   lv_obj_t* cont = lv_obj_create(screen);
   lv_obj_set_grid_dsc_array(cont, col_dsc, row_dsc);
   lv_obj_set_size(cont, Display.width(), Display.height());
-  
+
   // Set the background color of the container to aqua
   lv_obj_set_style_bg_color(cont, lv_color_hex(0x00FFFF), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, LV_PART_MAIN); // Ensure the background color is applied fully
-  
+
   lv_obj_center(cont);
 
   // Top left (Flow Rate)
@@ -102,7 +121,7 @@ void loop() {
 
   unsigned long currentMillis = millis();
   
-  if (currentMillis - previousMillis >= interval) {
+  if (currentMillis - previousMillis >= flowRateInterval) {
     previousMillis = currentMillis;
 
     // Calculate total volume
@@ -120,6 +139,31 @@ void loop() {
     // Convert String to C-string (const char*) for lvgl
     lv_label_set_text(flowRateLabel, ("Flow Rate: " + flowRateText).c_str());
   }
+
+  if (currentMillis - pHPreviousMillis >= pHInterval) {
+    pHPreviousMillis = currentMillis;
+
+    // Read the pH sensor value
+    int sensorValue = analogRead(PH_SENSOR_PIN);
+
+    // Store the reading and update the index
+    pHReadings[readingIndex] = sensorValue;
+    readingIndex = (readingIndex + 1) % NUM_SAMPLES;
+
+    // Calculate the average of the pH readings
+    int total = 0;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+      total += pHReadings[i];
+    }
+    float averageSensorValue = total / (float)NUM_SAMPLES;
+
+    // Calculate the pH value
+    filteredpHValue = (averageSensorValue * PH_CALIBRATION_SLOPE) + PH_CALIBRATION_OFFSET;
+
+    // Update the pH label
+    String pHValueText = String(filteredpHValue, 2);
+    lv_label_set_text(phValueLabel, ("pH Value: " + pHValueText).c_str());
+  }
 }
 
 // Event handler for reset button
@@ -127,16 +171,11 @@ void reset_button_event_handler(lv_event_t* e) {
   // Reset the flow rate and pH value
   lv_label_set_text(flowRateLabel, "Flow Rate: 0.00 L");
   lv_label_set_text(phValueLabel, "pH Value: 7.00");
-
-  // Reset the adulteration indicator
-  lv_obj_set_style_bg_color(adulterationIndicator, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-  lv_label_set_text(lv_obj_get_child(adulterationIndicator, 0), "Adulterated: No");
-
-  // Reset total volume
   totalVolume_L = 0;
+  filteredpHValue = 7.00;
 }
 
-// Interrupt service routine for counting pulses
+// Interrupt service routine to count pulses
 void countPulses() {
   pulseCount++;
 }
