@@ -6,13 +6,15 @@
 Arduino_H7_Video Display(800, 480, GigaDisplayShield);
 Arduino_GigaDisplayTouch TouchDetector;
 
-// Labels for displaying flow rate and pH value
+// Labels for displaying flow rate, pH value, and cloud status
 lv_obj_t* flowRateLabel;
 lv_obj_t* phValueLabel;
+lv_obj_t* adulterationLabel; // Adulteration label within pH box
+lv_obj_t* cloudStatusLabel; // Cloud status label
 
 // Button and indicator objects
 lv_obj_t* resetButton;
-lv_obj_t* adulterationIndicator;
+lv_obj_t* phValueBox; // Reference to the pH value box for background color change
 
 // Flow rate calculation variables
 #define FLOW_SENSOR_PIN D13               // GPIO pin connected to the sensor signal
@@ -54,7 +56,7 @@ void setup() {
 
   // Create a container with grid 2x2
   static lv_coord_t col_dsc[] = {370, 370, LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t row_dsc[] = {215, 215, LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t row_dsc[] = {215, 215, 215, LV_GRID_TEMPLATE_LAST};
   lv_obj_t* cont = lv_obj_create(screen);
   lv_obj_set_grid_dsc_array(cont, col_dsc, row_dsc);
   lv_obj_set_size(cont, Display.width(), Display.height());
@@ -77,8 +79,8 @@ void setup() {
   lv_label_set_text(flowRateLabel, "Flow Rate: 0.00 L");
   lv_obj_align(flowRateLabel, LV_ALIGN_CENTER, 0, 0);
 
-  // Top right (pH Value)
-  lv_obj_t* phValueBox = lv_obj_create(cont);
+  // Top right (pH Value and Adulteration Indicator)
+  phValueBox = lv_obj_create(cont);
   lv_obj_set_grid_cell(phValueBox, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
   lv_obj_set_style_bg_color(phValueBox, lv_color_hex(0xFFFFFF), LV_PART_MAIN);  // Set white background
   lv_obj_set_style_border_width(phValueBox, 2, LV_PART_MAIN);
@@ -87,7 +89,12 @@ void setup() {
   phValueLabel = lv_label_create(phValueBox);
   lv_obj_set_style_text_font(phValueLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
   lv_label_set_text(phValueLabel, "pH Value: 7.00");
-  lv_obj_align(phValueLabel, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_align(phValueLabel, LV_ALIGN_TOP_LEFT, 10, 10); // Adjust alignment as needed
+
+  adulterationLabel = lv_label_create(phValueBox); // Create label within pH box
+  lv_obj_set_style_text_font(adulterationLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
+  lv_label_set_text(adulterationLabel, "Adulterated: No");
+  lv_obj_align(adulterationLabel, LV_ALIGN_BOTTOM_LEFT, 10, -10); // Adjust alignment as needed
 
   // Bottom left (Reset Button)
   resetButton = lv_btn_create(cont);
@@ -103,24 +110,24 @@ void setup() {
 
   lv_obj_add_event_cb(resetButton, reset_button_event_handler, LV_EVENT_CLICKED, NULL);
 
-  // Bottom right (Adulteration Indicator)
-  adulterationIndicator = lv_obj_create(cont);
-  lv_obj_set_grid_cell(adulterationIndicator, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-  lv_obj_set_style_bg_color(adulterationIndicator, lv_color_hex(0xFFFFFF), LV_PART_MAIN);  // Set default white background
-  lv_obj_set_style_border_width(adulterationIndicator, 2, LV_PART_MAIN);
-  lv_obj_set_style_border_color(adulterationIndicator, lv_color_hex(0x000000), LV_PART_MAIN);
-
-  lv_obj_t* adulterationLabel = lv_label_create(adulterationIndicator);
-  lv_label_set_text(adulterationLabel, "Adulterated: No");
-  lv_obj_set_style_text_font(adulterationLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
-  lv_obj_align(adulterationLabel, LV_ALIGN_CENTER, 0, 0);
+  // Bottom right (Cloud Status)
+  lv_obj_t* cloudStatusBox = lv_obj_create(cont);
+  lv_obj_set_grid_cell(cloudStatusBox, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+  lv_obj_set_style_bg_color(cloudStatusBox, lv_color_hex(0xFFFFFF), LV_PART_MAIN);  // Set white background
+  lv_obj_set_style_border_width(cloudStatusBox, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(cloudStatusBox, lv_color_hex(0x000000), LV_PART_MAIN);
+  
+  cloudStatusLabel = lv_label_create(cloudStatusBox);
+  lv_label_set_text(cloudStatusLabel, "Cloud is not connected");
+  lv_obj_set_style_text_font(cloudStatusLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
+  lv_obj_align(cloudStatusLabel, LV_ALIGN_CENTER, 0, 0); // Centered within the box
 }
 
 void loop() {
   lv_timer_handler(); // Handle LVGL tasks
 
   unsigned long currentMillis = millis();
-  
+
   if (currentMillis - previousMillis >= flowRateInterval) {
     previousMillis = currentMillis;
 
@@ -163,6 +170,22 @@ void loop() {
     // Update the pH label
     String pHValueText = String(filteredpHValue, 2);
     lv_label_set_text(phValueLabel, ("pH Value: " + pHValueText).c_str());
+
+    // Handle adulteration and background color change
+    if (filteredpHValue < 6.2 || filteredpHValue > 8.0) {
+      lv_label_set_text(adulterationLabel, "Adulterated: Yes");
+      static unsigned long lastBlink = 0;
+      if (currentMillis - lastBlink >= 500) {  // Blink every 500ms
+        lastBlink = currentMillis;
+        static bool blinkFlag = false;
+        blinkFlag = !blinkFlag;
+        lv_color_t color = blinkFlag ? lv_color_hex(0xFF0000) : lv_color_hex(0xFFFFFF);
+        lv_obj_set_style_bg_color(phValueBox, color, LV_PART_MAIN);
+      }
+    } else {
+      lv_label_set_text(adulterationLabel, "Adulterated: No");
+      lv_obj_set_style_bg_color(phValueBox, lv_color_hex(0xFFFFFF), LV_PART_MAIN);  // Reset to White
+    }
   }
 }
 
@@ -171,6 +194,7 @@ void reset_button_event_handler(lv_event_t* e) {
   // Reset the flow rate and pH value
   lv_label_set_text(flowRateLabel, "Flow Rate: 0.00 L");
   lv_label_set_text(phValueLabel, "pH Value: 7.00");
+  lv_label_set_text(adulterationLabel, "Adulterated: No"); // Reset adulteration indication
   totalVolume_L = 0;
   filteredpHValue = 7.00;
 }
