@@ -2,6 +2,9 @@
 #include "lvgl.h"
 #include "Arduino_GigaDisplayTouch.h"
 
+// Include the custom font source file
+LV_FONT_DECLARE(font_18);  // Ensure this matches the name in font_18.c
+
 // Initialize display and touch
 Arduino_H7_Video Display(800, 480, GigaDisplayShield);
 Arduino_GigaDisplayTouch TouchDetector;
@@ -37,10 +40,17 @@ int pHReadings[NUM_SAMPLES];              // Array to store pH sensor readings
 int readingIndex = 0;                     // Index for pHReadings array
 float filteredpHValue = 7.00;             // Filtered pH value
 
+// Software debounce for pulse counting
+volatile unsigned long lastInterruptTime = 0;
+#define DEBOUNCE_DELAY 50  // Debounce time in milliseconds
+
 void setup() {
   // Initialize display and touch detector
   Display.begin();
   TouchDetector.begin();
+
+  // Initialize serial communication for debugging
+  Serial.begin(115200);
 
   // Flow sensor setup
   pinMode(FLOW_SENSOR_PIN, INPUT);
@@ -51,7 +61,10 @@ void setup() {
     pHReadings[i] = 0;
   }
 
-  // Display & Grid Setup
+  // Initialize LVGL
+  lv_init();
+
+  // Create a screen and set it as active
   lv_obj_t* screen = lv_scr_act();
 
   // Create a container with grid 2x2
@@ -75,7 +88,7 @@ void setup() {
   lv_obj_set_style_border_color(flowRateBox, lv_color_hex(0x000000), LV_PART_MAIN);
 
   flowRateLabel = lv_label_create(flowRateBox);
-  lv_obj_set_style_text_font(flowRateLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
+  lv_obj_set_style_text_font(flowRateLabel, &font_18, LV_PART_MAIN);  // Set custom font
   lv_label_set_text(flowRateLabel, "Flow Rate: 0.00 L");
   lv_obj_align(flowRateLabel, LV_ALIGN_CENTER, 0, 0);
 
@@ -87,12 +100,12 @@ void setup() {
   lv_obj_set_style_border_color(phValueBox, lv_color_hex(0x000000), LV_PART_MAIN);
 
   phValueLabel = lv_label_create(phValueBox);
-  lv_obj_set_style_text_font(phValueLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
+  lv_obj_set_style_text_font(phValueLabel, &font_18, LV_PART_MAIN);  // Set custom font
   lv_label_set_text(phValueLabel, "pH Value: 7.00");
   lv_obj_align(phValueLabel, LV_ALIGN_TOP_LEFT, 10, 10); // Adjust alignment as needed
 
   adulterationLabel = lv_label_create(phValueBox); // Create label within pH box
-  lv_obj_set_style_text_font(adulterationLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
+  lv_obj_set_style_text_font(adulterationLabel, &font_18, LV_PART_MAIN);  // Set custom font
   lv_label_set_text(adulterationLabel, "Adulterated: No");
   lv_obj_align(adulterationLabel, LV_ALIGN_BOTTOM_LEFT, 10, -10); // Adjust alignment as needed
 
@@ -105,7 +118,7 @@ void setup() {
 
   lv_obj_t* resetLabel = lv_label_create(resetButton);
   lv_label_set_text(resetLabel, "Reset");
-  lv_obj_set_style_text_font(resetLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
+  lv_obj_set_style_text_font(resetLabel, &font_18, LV_PART_MAIN);  // Set custom font
   lv_obj_align(resetLabel, LV_ALIGN_CENTER, 0, 0);
 
   lv_obj_add_event_cb(resetButton, reset_button_event_handler, LV_EVENT_CLICKED, NULL);
@@ -119,7 +132,7 @@ void setup() {
   
   cloudStatusLabel = lv_label_create(cloudStatusBox);
   lv_label_set_text(cloudStatusLabel, "Cloud is not connected");
-  lv_obj_set_style_text_font(cloudStatusLabel, &lv_font_montserrat_14, LV_PART_MAIN);  // Set font size to 14
+  lv_obj_set_style_text_font(cloudStatusLabel, &font_18, LV_PART_MAIN);  // Set custom font
   lv_obj_align(cloudStatusLabel, LV_ALIGN_CENTER, 0, 0); // Centered within the box
 }
 
@@ -137,8 +150,16 @@ void loop() {
     pulseCount = 0;
     interrupts();  // Re-enable interrupts
 
+    // Debug: Print the number of pulses
+    Serial.print("Pulses: ");
+    Serial.println(pulses);
+
     // Update total volume based on pulses
     totalVolume_L += (pulses / (float)PULSES_PER_LITER);
+
+    // Debug: Print the total volume
+    Serial.print("Total Volume: ");
+    Serial.println(totalVolume_L);
 
     // Create a String for flow rate text
     String flowRateText = String(totalVolume_L, 2) + " L";
@@ -199,8 +220,12 @@ void reset_button_event_handler(lv_event_t* e) {
   filteredpHValue = 7.00;
 }
 
-// Interrupt service routine to count pulses
+// Interrupt service routine to count pulses with software debounce
 void countPulses() {
-  pulseCount++;
+  unsigned long interruptTime = millis();
+  if (interruptTime - lastInterruptTime > DEBOUNCE_DELAY) {
+    pulseCount++;
+    lastInterruptTime = interruptTime;
+  }
 }
 
