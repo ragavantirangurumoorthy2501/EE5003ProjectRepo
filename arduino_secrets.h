@@ -1,0 +1,3 @@
+#define SECRET_OPTIONAL_PASS "D3euucMga8"
+#define SECRET_SSID "eir28682953"
+
