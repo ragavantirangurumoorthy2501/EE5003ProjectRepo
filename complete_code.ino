@@ -1,12 +1,12 @@
 #include "thingProperties.h"
 
-// Include the necessary libraries
+// Necessary libraries for Arduino Display are added here
 #include "Arduino_H7_Video.h"
 #include "lvgl.h"
 #include "Arduino_GigaDisplayTouch.h"
 
-// Include the custom font source file
-LV_FONT_DECLARE(font_18);  // Ensure this matches the name in font_18.c
+// custom font is stored in the same directory and used
+LV_FONT_DECLARE(font_18);  
 
 // Initialize display and touch
 Arduino_H7_Video Display(800, 480, GigaDisplayShield);
@@ -19,42 +19,42 @@ lv_obj_t* adulterationLabel; // Adulteration label within pH box
 lv_obj_t* MessageLabel; // Cloud status label
 lv_obj_t* filledVolumeLabel; // Filled volume label
 
-// Button and indicator objects
+// Objects included for buttons and Indicator
 lv_obj_t* resetButtonInsideFlowRate; // Reset button inside flowRateBox
 lv_obj_t* phValueBox; // Reference to the pH value box for background color change
 lv_obj_t* ultrasonicBox; // Box for ultrasonic readings
 
-// Flow rate calculation variables
-#define FLOW_SENSOR_PIN D13               // GPIO pin connected to the sensor signal
-#define PULSES_PER_LITER 450              // Number of pulses per liter (adjust based on your sensor)
-volatile int pulseCount = 0;              // Variable to store pulse count
-float totalVolume_L = 0;                  // Total volume in liters
+// Variables for Flow rate calculations
+#define FLOW_SENSOR_PIN D13               
+#define PULSES_PER_LITER 450              // Number of pulses per liter (adjusted as required)
+volatile int pulseCount = 0;              
+float totalVolume_L = 0;                 
 
-unsigned long previousMillis = 0;         // Stores the last time the flow rate was updated
-const long flowRateInterval = 1000;       // Interval at which to update (milliseconds)
+unsigned long previousMillis = 0;         
+const long flowRateInterval = 1000;       
 
 // pH sensor variables
-#define PH_SENSOR_PIN A2                  // Analog pin connected to the pH sensor
+#define PH_SENSOR_PIN A2                  // Analog pin was connected to the pH sensor
 #define NUM_SAMPLES 10                    // Number of samples for averaging
 #define PH_CALIBRATION_OFFSET -2.33       // Adjusted calibration offset for lemon juice
 #define PH_CALIBRATION_SLOPE 0.017        // Calibration slope (default is 3.5 for 5V, but adjusted here)
 
-unsigned long pHPreviousMillis = 0;       // Stores the last time the pH value was updated
-const long pHInterval = 1000;             // Interval at which to update pH value (milliseconds)
-int pHReadings[NUM_SAMPLES];              // Array to store pH sensor readings
-int readingIndex = 0;                     // Index for pHReadings array
-float filteredpHValue = 7.00;             // Filtered pH value
+unsigned long pHPreviousMillis = 0;       
+const long pHInterval = 1000;             
+int pHReadings[NUM_SAMPLES];              
+int readingIndex = 0;                     
+float filteredpHValue = 7.00;             
 
 // Ultrasonic sensor variables
-#define ULTRASONIC_SIG_PIN D6          // GPIO pin connected to the ultrasonic SIG
+#define ULTRASONIC_SIG_PIN D6          // D6 GPIO pin connected to the ultrasonic SIG
 
 // Software debounce for pulse counting
 volatile unsigned long lastInterruptTime = 0;
-#define DEBOUNCE_DELAY 50  // Debounce time in milliseconds
+#define DEBOUNCE_DELAY 50  
 
-// Define tank dimensions
-#define TANK_HEIGHT_CM 50       // Total height of the tank in centimeters (adjust as needed)
-#define TANK_VOLUME_ML 2000     // Total volume of the tank in milliliters (2 liters)
+// Defined tank dimensions
+#define TANK_HEIGHT_CM 50       // Total height of the tank in centimeters (adjusted as required)
+#define TANK_VOLUME_ML 2000     // Total volume of the tank in milliliters (2 liters claculated using a waterbottle)
 
 unsigned long ultrasonicPreviousMillis = 0; // Last update time for ultrasonic reading
 const long ultrasonicUpdateInterval = 3000; // Update interval (3 seconds)
@@ -64,7 +64,7 @@ void setup() {
   Serial.begin(9600);
   delay(1500); 
 
-  // Defined in thingProperties.h
+  
   initProperties();
 
   // Connect to Arduino IoT Cloud
@@ -162,7 +162,7 @@ void setup() {
   lv_label_set_text(filledVolumeLabel, "Filled Volume: 0.00 mL");
   lv_obj_align(filledVolumeLabel, LV_ALIGN_CENTER, 0, 0);
 
-  // Bottom right (Cloud Status)
+  // Bottom right (Message box like project topic)
   lv_obj_t* MessageBox = lv_obj_create(cont);
   lv_obj_set_grid_cell(MessageBox, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
   lv_obj_set_style_bg_color(MessageBox, lv_color_hex(0xFFFFFF), LV_PART_MAIN);  // Set white background
@@ -194,7 +194,7 @@ void loop() {
     updatePHValue();
   }
 
-  // Update filled volume every 3 seconds
+  // Update filled volume every 3 seconds to display stable readings
   if (currentMillis - ultrasonicPreviousMillis >= ultrasonicUpdateInterval) {
     ultrasonicPreviousMillis = currentMillis;
     updateUltrasonicReading();
@@ -254,7 +254,7 @@ void updatePHValue() {
 }
 
 void updateUltrasonicReading() {
-  // Trigger pulse
+  // Trigger pulse in which the signal pin is used for both trigger and echo
   pinMode(ULTRASONIC_SIG_PIN, OUTPUT);
   digitalWrite(ULTRASONIC_SIG_PIN, LOW);
   delayMicroseconds(2);
@@ -269,13 +269,13 @@ void updateUltrasonicReading() {
   float filledVolume_mL = -1; // Default to -1 to indicate invalid reading
 
   if (distance_cm >= 0 && distance_cm <= TANK_HEIGHT_CM) {
-    // Calculate the remaining height in the tank
+    // Calculates the remaining height in the tank
     float remainingHeight_cm = TANK_HEIGHT_CM - distance_cm;
 
-    // Calculate the remaining fuel level in milliliters
+    // Calculates the remaining fuel level in milliliters
     float fuelLevel_mL = (remainingHeight_cm / TANK_HEIGHT_CM) * TANK_VOLUME_ML;
 
-    // Calculate the filled volume based on remaining fuel
+    // Calculates the filled volume based on remaining fuel
     filledVolume_mL = TANK_VOLUME_ML - fuelLevel_mL;
   }
 
@@ -299,7 +299,7 @@ void reset_button_event_handler(lv_event_t* e) {
 
 // Cloud variable change handler
 void onTankCapacityChange() {
-  // Act upon TankCapacity change if needed
+  
   Serial.println("Cloud variable tank_Capacity changed: " + String(tank_Capacity));
 }
 
